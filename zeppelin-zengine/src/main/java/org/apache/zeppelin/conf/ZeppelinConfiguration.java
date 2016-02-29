@@ -353,7 +353,7 @@ public class ZeppelinConfiguration extends XMLConfiguration {
   public String getBucketName() {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_S3_BUCKET);
   }
-  
+
   public String getEndpoint() {
     return getString(ConfVars.ZEPPELIN_NOTEBOOK_S3_ENDPOINT);
   }
@@ -544,7 +544,8 @@ public class ZeppelinConfiguration extends XMLConfiguration {
         + "org.apache.zeppelin.jdbc.JDBCInterpreter,"
         + "org.apache.zeppelin.hbase.HbaseInterpreter,"
         + "org.apache.zeppelin.bigquery.BigQueryInterpreter,"
-        + "org.apache.zeppelin.beam.BeamInterpreter"),
+        + "org.apache.zeppelin.beam.BeamInterpreter,"
+        + "org.apache.zeppelin.systemml.DMLInterpreter"),
     ZEPPELIN_INTERPRETER_JSON("zeppelin.interpreter.setting", "interpreter-setting.json"),
     ZEPPELIN_INTERPRETER_DIR("zeppelin.interpreter.dir", "interpreter"),
     ZEPPELIN_INTERPRETER_LOCALREPO("zeppelin.interpreter.localRepo", "local-repo"),

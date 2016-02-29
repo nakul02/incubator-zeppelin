@@ -66,6 +66,7 @@
     <module>postgresql</module>
     <module>jdbc</module>
     <module>file</module>
+    <module>systemml</module>
     <module>flink</module>
     <module>ignite</module>
     <module>kylin</module>
