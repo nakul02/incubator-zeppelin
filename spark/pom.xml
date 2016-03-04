@@ -38,9 +38,17 @@
     <mockito.version>1.10.19</mockito.version>
     <powermock.version>1.6.4</powermock.version>
     <spark.version>2.0.1</spark.version>
+    <systemml.version>0.10.0-incubating</systemml.version>
   </properties>
 
   <dependencies>
+
+    <dependency>
+      <groupId>org.apache.systemml</groupId>
+      <artifactId>systemml</artifactId>
+      <version>${systemml.version}</version>
+    </dependency>
+
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>

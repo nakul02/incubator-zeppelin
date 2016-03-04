@@ -120,8 +120,8 @@ public class DMLInterpreter extends Interpreter {
 
   @Override
   public Scheduler getScheduler() {
-    return SchedulerFactory.singleton().createOrGetParallelScheduler(
-            DMLInterpreter.class.getName() + this.hashCode(), 1);
+    return SchedulerFactory.singleton().createOrGetFIFOScheduler(
+            DMLInterpreter.class.getName() + this.hashCode());
   }
 
   @Override
