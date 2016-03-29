@@ -57,7 +57,7 @@ public class DMLInterpreter extends Interpreter {
 
       DMLScript.rtplatform = DMLScript.RUNTIME_PLATFORM.SINGLE_NODE;
       DMLConfig conf = new DMLConfig();
-      ConfigurationManager.setConfig(conf);
+      ConfigurationManager.setLocalConfig(conf);
 
       //Step 2: set local/remote memory if requested (for compile in AM context)
       if (conf.getBooleanValue(DMLConfig.YARN_APPMASTER)) {
