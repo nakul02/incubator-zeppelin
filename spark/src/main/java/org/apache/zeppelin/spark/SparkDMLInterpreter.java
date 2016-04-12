@@ -14,14 +14,15 @@ import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.SQLContext;
 import org.apache.sysml.api.MLContext;
 import org.apache.sysml.api.MLOutput;
-import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.dml.DmlBaseListener;
 import org.apache.sysml.parser.dml.DmlLexer;
 import org.apache.sysml.parser.dml.DmlParser;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.LocalVariableMap;
-import org.apache.sysml.runtime.instructions.cp.Data;
-import org.apache.tools.ant.taskdefs.Local;
+import org.apache.sysml.runtime.controlprogram.caching.FrameObject;
+import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
+import org.apache.sysml.runtime.instructions.cp.*;
+import org.apache.sysml.runtime.instructions.spark.data.RDDObject;
 import org.apache.zeppelin.interpreter.*;
 import org.apache.zeppelin.scheduler.Scheduler;
 import org.apache.zeppelin.scheduler.SchedulerFactory;
@@ -83,13 +84,13 @@ public class SparkDMLInterpreter extends Interpreter {
   @Override
   public void close() {
     // Clear variables held between DML cells
-    //localVariableMap.removeAll();
+    localVariableMap.removeAll();
   }
 
   @Override
   public void destroy() {
     // Clear variables held between DML cells
-    //localVariableMap.removeAll();
+    localVariableMap.removeAll();
   }
 
   @Override
@@ -103,7 +104,9 @@ public class SparkDMLInterpreter extends Interpreter {
     // write(W, $zWout)
     // W is a Java object that is put into the ZeppelinContext object with name "Wout"
 
-    final String prefix = "z";  // Prefix
+    final String prefix = "z";  // Prefix for variables for ZeppelinContext
+    final String previousCellPrefix = "PC"; // Prefix for read/write statements for
+                                            // matrices & frames from previous cells
     StringBuffer statusMessages = new StringBuffer();
 
     try {
@@ -114,17 +117,27 @@ public class SparkDMLInterpreter extends Interpreter {
       System.setOut(ps);
 
       // DML Var Name -> ZeppelinContextName
-      final Map<String, String> readVariablesMap = new HashMap<String, String>();
-      final Map<String, String> writeVariablesMap = new HashMap<String, String>();
-      final Set<String> lhsVariableSet = new HashSet<String>();
+      final Map<String, String> readStatementVars = new HashMap<String, String>();
+      final Map<String, String> writeStatementVars = new HashMap<String, String>();
+      final Set<String> lhsVariables;
+      final Set<String> rwVariables;
+      final Set<String> readVariables = new HashSet<String>();
+      final Set<String> writeVariables;
 
       ParseTree tree = getParseTree(dmlScriptStr);
 
+      // All DML Variables that have been read from or written to
+      rwVariables = parseAllReadWrittenVariables(tree);
+
       // Collect DML Variables that are LHS in any assignment
-      parseLHSVariables(tree, lhsVariableSet);
+      lhsVariables = parseLHSVariables(tree);
 
       // Collect the DML variables that will be registered as input and output
-      parseReadWriteVariables(tree, prefix, readVariablesMap, writeVariablesMap);
+      parseReadWritStatementVariables(tree, prefix, readStatementVars, writeStatementVars);
+
+      writeVariables = lhsVariables;
+      readVariables.addAll(rwVariables);
+      readVariables.removeAll(writeVariables);  // rwVariables - writeVariables = lhsVariables
 
       // Create the MLContext instance &
       // Get the ZeppelinContext object shared by the "Spark Family" of interpreters
@@ -134,46 +147,56 @@ public class SparkDMLInterpreter extends Interpreter {
       z.setGui(context.getGui());
       z.setInterpreterContext(context);
 
-      // Registers the DML variables as inputs and outputs
-      registerInputOutputVariables(statusMessages, readVariablesMap, writeVariablesMap, ml, z);
-
       // Move all variables in the localVariableMap from previous cell to this one
       LocalVariableMap lvm = ml.getLocalVariablesMap();
       lvm.putAll(localVariableMap);
 
+      // Registers the DML variables as inputs and outputs for ZeppelinContext
+      registerVarsForZeppelinContext(statusMessages, readStatementVars, writeStatementVars, ml, z);
+
+      // Insert assignment statements for primitive types and read statements for matrices & frames
+      StringBuffer prepend = createPrependString(previousCellPrefix, readVariables, ml);
+
+      // Insert write statements for primitive types
+      StringBuffer append = createAppendStringForDMLScript(previousCellPrefix, writeVariables, ml);
+
+
       statusMessages.append("\nVariables being injected from previous cells : ");
       for (String v : lvm.keySet()){
-        statusMessages.append(v).append(":").append(lvm.get(v).getDataType());
+        statusMessages.append(v).append(":").append(lvm.get(v).getDataType()).append(",");
       }
 
       // Execute the script
-      MLOutput output = ml.executeScript(dmlScriptStr);
+      MLOutput output = ml.executeScript(
+              prepend.toString()  + "\n" +
+              dmlScriptStr        + "\n" +
+              append.toString());
 
       // Save the DML Variables that are "write"-en to in the Zeppelin Context Object
-      saveToZeppelinContext(statusMessages, writeVariablesMap, z, output);
+      saveToZeppelinContext(statusMessages, writeStatementVars, z, output);
 
       LocalVariableMap lvmAfterRun = ml.getLocalVariablesMap();
       localVariableMap.putAll(lvmAfterRun);
       Set<String> availableVarSet = lvmAfterRun.keySet();
 
       // LHS Vars - Saved Vars
-      lhsVariableSet.removeAll(availableVarSet);
+      lhsVariables.removeAll(availableVarSet);
 
       if (availableVarSet.size() > 0)
         statusMessages.append( "\n" + "Saved variables : ");
       for (String s : availableVarSet){
         statusMessages.append(s + ", ");
       }
-      if (lhsVariableSet.size() > 0)
+      if (lhsVariables.size() > 0)
         statusMessages.append("\n" + "Optimized away : ");
-      for (String s : lhsVariableSet){
+      for (String s : lhsVariables){
         statusMessages.append(s + ", ");
       }
 
       String out = os.toString();
       return new InterpreterResult(InterpreterResult.Code.SUCCESS, out
-              + "\n"
-              + statusMessages.toString());
+              + "\n" );
+              //+ statusMessages.toString()
 
 
     } catch (Exception e) {
@@ -189,7 +212,94 @@ public class SparkDMLInterpreter extends Interpreter {
     }
   }
 
-  private void parseLHSVariables(ParseTree tree, final Set<String> lhsVariableSet) {
+  private StringBuffer createAppendStringForDMLScript(String previousCellPrefix,
+    Set<String> writeVariables, MLContext ml) throws DMLRuntimeException {
+    StringBuffer append = new StringBuffer();
+    for (String v : writeVariables) {
+      append.append("write(" + v + " ,$" + previousCellPrefix + v + ");");
+      append.append("\n");
+      ml.registerOutput(v);
+    }
+    return append;
+  }
+
+  private StringBuffer createPrependString(
+     String prevCellPrefix, Set<String> readVariables, MLContext ml) throws DMLRuntimeException {
+    StringBuffer prepend = new StringBuffer();
+    for (String v : readVariables){
+      Data d = localVariableMap.get(v);
+      if (d == null){
+        throw new DMLRuntimeException(
+                "Could not find value for " + d + " in variables map from previous cell");
+      }
+
+      prepend.append(v + " <- ");
+
+      if (d instanceof MatrixObject){
+        prepend.append("read($" + prevCellPrefix + v + ");");
+        ml.getInVarnames().add(v);
+
+      } else if (d instanceof FrameObject){
+        prepend.append("read($" + prevCellPrefix + v + ");");
+        ml.getInVarnames().add(v);
+
+      } else if (d instanceof DoubleObject){
+        double value = ((DoubleObject) d).getDoubleValue();
+        prepend.append(value).append(";");
+
+      } else if (d instanceof IntObject) {
+        long value = ((IntObject) d).getLongValue();
+        prepend.append(value).append(";");
+
+      } else if (d instanceof BooleanObject){
+        boolean value = ((BooleanObject) d).getBooleanValue();
+        prepend.append(value).append(";");
+
+      } else if (d instanceof StringObject) {
+        String value = ((StringObject) d).getStringValue();
+        prepend.append("\"" + value + "\"").append(";");
+
+      } else {
+        throw new DMLRuntimeException("Type of " +
+                d.getDataType() + "[" + d.getValueType() +  "] not supported");
+      }
+      prepend.append("\n");
+    }
+
+    return prepend;
+  }
+
+  /**
+   * Return in a set, all the variables that have been written to or read from
+   * @param tree
+   * @return names of all the DML variables that have written to or read from
+   */
+  private Set<String> parseAllReadWrittenVariables(ParseTree tree) {
+    final Set<String> rwVariables = new HashSet<String>();
+    DmlBaseListener readwriteListener = new DmlBaseListener(){
+      @Override public void exitSimpleDataIdentifierExpression(
+              @NotNull DmlParser.SimpleDataIdentifierExpressionContext ctx) {
+        rwVariables.add(ctx.ID().getText());
+      }
+
+      @Override public void exitIndexedExpression(
+              @NotNull DmlParser.IndexedExpressionContext ctx) {
+        rwVariables.add(ctx.name.getText());
+      }
+
+    };
+
+    ParseTreeWalker.DEFAULT.walk(readwriteListener, tree);
+    return rwVariables;
+  }
+
+  /**
+   * Return in a set, all the variables that have been written to
+   * @param tree
+   * @return names of all the DML variables that have written to
+   */
+  private Set<String> parseLHSVariables(ParseTree tree) {
+    final Set<String> lhsVariableSet = new HashSet<String>();
     DmlBaseListener lhsListener = new DmlBaseListener() {
 
       @Override public void exitFunctionCallAssignmentStatement(
@@ -224,6 +334,7 @@ public class SparkDMLInterpreter extends Interpreter {
     };
 
     ParseTreeWalker.DEFAULT.walk(lhsListener, tree);
+    return lhsVariableSet;
   }
 
   /**
@@ -263,7 +374,7 @@ public class SparkDMLInterpreter extends Interpreter {
    * @param z
    * @throws Exception
    */
-  private void registerInputOutputVariables(
+  private void registerVarsForZeppelinContext(
           StringBuffer statusMessages,
           Map<String, String> readVariablesMap,
           Map<String, String> writeVariablesMap,
@@ -320,7 +431,7 @@ public class SparkDMLInterpreter extends Interpreter {
    * @param writeVariablesMap (out)
    * @throws IOException
    */
-  private void parseReadWriteVariables(
+  private void parseReadWritStatementVariables(
           ParseTree tree,
           final String prefix,
           final Map<String, String> readVariablesMap,
@@ -399,8 +510,7 @@ public class SparkDMLInterpreter extends Interpreter {
   }
 
   @Override
-  public void cancel(InterpreterContext context) {
-  }
+  public void cancel(InterpreterContext context) {}
 
   @Override
   public FormType getFormType() {
@@ -409,7 +519,7 @@ public class SparkDMLInterpreter extends Interpreter {
 
   @Override
   public int getProgress(InterpreterContext context) {
-    return 0;
+    return getSparkInterpreter().getProgress(context);
   }
 
   @Override
