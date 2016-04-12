@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y git curl wget unzip bzip2
 #    cd .. && git clone -b spark_dml https://github.com/nakul02/incubator-zeppelin.git &&\
 #    cd incubator-zeppelin && mvn package -DskipTests
 
-RUN git clone -b zeppelin https://github.com/apache/incubator-systemml    &&\
+RUN git clone -b zeppelin https://github.com/nakul02/incubator-systemml   &&\
     cd incubator-systemml                                                 &&\
     mvn package -P distribution                                           &&\
     mvn install                                                           &&\
@@ -18,7 +18,7 @@ RUN git clone -b zeppelin https://github.com/apache/incubator-systemml    &&\
     mv zeppelin-distribution/target/zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz / &&\
     cd /
     rm -rf incubator-systemml incubator-zeppelin                          &&\
-    tar xvf zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz                     
+    tar xvf zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz
 
 ADD http://snap.stanford.edu/data/amazon0601.txt.gz /
 CMD ["/zeppelin-0.6.0-incubating-SNAPSHOT/bin/zeppelin.sh"]
