@@ -16,7 +16,7 @@ RUN git clone -b zeppelin https://github.com/nakul02/incubator-systemml   &&\
     cd incubator-zeppelin                                                 &&\
     mvn clean package -Pbuild-distr -DskipTests                           &&\
     mv zeppelin-distribution/target/zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz / &&\
-    cd /
+    cd /                                                                  &&\
     rm -rf incubator-systemml incubator-zeppelin                          &&\
     tar xvf zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz
 
