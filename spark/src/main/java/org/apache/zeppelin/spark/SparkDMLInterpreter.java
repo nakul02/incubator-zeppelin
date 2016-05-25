@@ -45,6 +45,11 @@ public class SparkDMLInterpreter extends Interpreter {
    */
   public static LocalVariableMap localVariableMap = new LocalVariableMap();
 
+  /**
+   * Maintains all the functions defined in the notebook
+   */
+  public static Map<String, String> functionDefinitionMap = new HashMap<String, String>();
+
   static {
     Interpreter.register("dml", "spark", SparkDMLInterpreter.class.getName());
   }
@@ -85,12 +90,14 @@ public class SparkDMLInterpreter extends Interpreter {
   public void close() {
     // Clear variables held between DML cells
     localVariableMap.removeAll();
+    functionDefinitionMap.clear();
   }
 
   @Override
   public void destroy() {
     // Clear variables held between DML cells
     localVariableMap.removeAll();
+    functionDefinitionMap.clear();
   }
 
   @Override
@@ -132,12 +139,29 @@ public class SparkDMLInterpreter extends Interpreter {
       // Collect DML Variables that are LHS in any assignment
       lhsVariables = parseLHSVariables(tree);
 
+      // Collect all function definitions
+      Map<String, String> localFunctionDefinitions = collectFunctionDefinitions(dmlScriptStr, tree);
+      functionDefinitionMap.putAll(localFunctionDefinitions);
+
       // Collect the DML variables that will be registered as input and output
       parseReadWritStatementVariables(tree, prefix, readStatementVars, writeStatementVars);
+
+      // Collect all function usages
+      Set<String> functionCalls = parseFunctionUsages(tree);
 
       writeVariables = lhsVariables;
       readVariables.addAll(rwVariables);
       readVariables.removeAll(writeVariables);  // rwVariables - writeVariables = lhsVariables
+
+      // Create list of functions to prepend and map of function -> function_body
+      Set<String> functionsToAppend = new HashSet<String>(functionCalls);
+      // Intersection of functions called and functions defined
+      functionsToAppend.retainAll(functionDefinitionMap.keySet());
+      functionsToAppend.removeAll(localFunctionDefinitions.keySet()); // Remove functions defined 
+      Map<String, String> functionsToAppendMap = new HashMap<String, String>();
+      for (String f : functionsToAppend){
+        functionsToAppendMap.put(f, functionDefinitionMap.get(f));
+      }
 
       // Create the MLContext instance &
       // Get the ZeppelinContext object shared by the "Spark Family" of interpreters
@@ -155,7 +179,9 @@ public class SparkDMLInterpreter extends Interpreter {
       registerVarsForZeppelinContext(statusMessages, readStatementVars, writeStatementVars, ml, z);
 
       // Insert assignment statements for primitive types and read statements for matrices & frames
-      StringBuffer prepend = createPrependString(previousCellPrefix, readVariables, ml);
+      // Also inserts function definitions
+      StringBuffer prepend = createPrependString(
+              previousCellPrefix, readVariables, functionsToAppendMap, ml);
 
       // Insert write statements for primitive types
       StringBuffer append = createAppendStringForDMLScript(previousCellPrefix, writeVariables, ml);
@@ -224,13 +250,16 @@ public class SparkDMLInterpreter extends Interpreter {
   }
 
   private StringBuffer createPrependString(
-     String prevCellPrefix, Set<String> readVariables, MLContext ml) throws DMLRuntimeException {
+     String prevCellPrefix,
+     Set<String> readVariables,
+     Map<String, String> functionsToAppendMap,
+     MLContext ml) throws DMLRuntimeException {
     StringBuffer prepend = new StringBuffer();
     for (String v : readVariables){
       Data d = localVariableMap.get(v);
       if (d == null){
         throw new DMLRuntimeException(
-                "Could not find value for " + d + " in variables map from previous cell");
+                "Could not find value for " + v + " in variables map from previous cell");
       }
 
       prepend.append(v + " <- ");
@@ -266,6 +295,10 @@ public class SparkDMLInterpreter extends Interpreter {
       prepend.append("\n");
     }
 
+    for (String b : functionsToAppendMap.values()){
+      prepend.append("\n").append(b).append("\n");
+    }
+
     return prepend;
   }
 
@@ -277,20 +310,104 @@ public class SparkDMLInterpreter extends Interpreter {
   private Set<String> parseAllReadWrittenVariables(ParseTree tree) {
     final Set<String> rwVariables = new HashSet<String>();
     DmlBaseListener readwriteListener = new DmlBaseListener(){
+
+      // If the read/write variables happen inside a function definition, ignore them
+      boolean inFunctionDef = false;
+      @Override public void enterInternalFunctionDefExpression(
+              @NotNull DmlParser.InternalFunctionDefExpressionContext ctx) {
+        inFunctionDef = true;
+      }
+
+      @Override public void exitInternalFunctionDefExpression(
+              @NotNull DmlParser.InternalFunctionDefExpressionContext ctx) {
+        inFunctionDef = false;
+      }
+
+      @Override public void enterBuiltinFunctionExpression(
+              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+        inFunctionDef = true;
+      }
+
+      @Override public void exitBuiltinFunctionExpression(
+              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+        inFunctionDef = false;
+      }
+
+
       @Override public void exitSimpleDataIdentifierExpression(
               @NotNull DmlParser.SimpleDataIdentifierExpressionContext ctx) {
-        rwVariables.add(ctx.ID().getText());
+        if (!inFunctionDef) {
+          rwVariables.add(ctx.ID().getText());
+        }
       }
 
       @Override public void exitIndexedExpression(
               @NotNull DmlParser.IndexedExpressionContext ctx) {
-        rwVariables.add(ctx.name.getText());
+        if (!inFunctionDef) {
+          rwVariables.add(ctx.name.getText());
+        }
       }
 
     };
 
     ParseTreeWalker.DEFAULT.walk(readwriteListener, tree);
     return rwVariables;
+  }
+
+  /**
+   * Returns all the functions defined in the given tree as a
+   * Map from function name to the function definition (including the signature)
+   * @param tree
+   * @return
+   */
+  private Map<String, String> collectFunctionDefinitions(final String dmlScript, ParseTree tree){
+    final Map<String, String> functionDefinitions = new HashMap<String, String>();
+    DmlBaseListener functionDefListener = new DmlBaseListener() {
+
+      @Override public void exitInternalFunctionDefExpression(
+              @NotNull DmlParser.InternalFunctionDefExpressionContext ctx) {
+        String name = ctx.name.getText();
+        int startIndex = ctx.getStart().getStartIndex();
+        int stopIndex = ctx.getStop().getStopIndex();
+        String body = dmlScript.substring(startIndex, stopIndex + 1);
+        functionDefinitions.put(name, body);
+      }
+
+      @Override public void exitBuiltinFunctionExpression(
+              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+        String name = ctx.name.getText();
+        int startIndex = ctx.getStart().getStartIndex();
+        int stopIndex = ctx.getStop().getStopIndex();
+        String body = dmlScript.substring(startIndex, stopIndex + 1);
+        functionDefinitions.put(name, body);
+      }
+    };
+    ParseTreeWalker.DEFAULT.walk(functionDefListener, tree);
+    return functionDefinitions;
+  }
+
+  /**
+   * Returns the names of all functions that have been used.
+   * @param tree
+   * @return
+   */
+  private Set<String> parseFunctionUsages(ParseTree tree){
+    final Set<String> functionUsages = new HashSet<String>();
+    DmlBaseListener functionUseListener = new DmlBaseListener() {
+      @Override public void exitFunctionCallAssignmentStatement(
+              @NotNull DmlParser.FunctionCallAssignmentStatementContext ctx) {
+        String functionName = ctx.name.getText();
+        functionUsages.add(functionName);
+      }
+
+      @Override public void exitFunctionCallMultiAssignmentStatement(
+              @NotNull DmlParser.FunctionCallMultiAssignmentStatementContext ctx) {
+        String functionName = ctx.name.getText();
+        functionUsages.add(functionName);
+      }
+    };
+    ParseTreeWalker.DEFAULT.walk(functionUseListener, tree);
+    return functionUsages;
   }
 
   /**
@@ -302,28 +419,58 @@ public class SparkDMLInterpreter extends Interpreter {
     final Set<String> lhsVariableSet = new HashSet<String>();
     DmlBaseListener lhsListener = new DmlBaseListener() {
 
+      // If the read/write variables happen inside a function definition, ignore them
+      boolean inFunctionDef = false;
+      @Override public void enterInternalFunctionDefExpression(
+              @NotNull DmlParser.InternalFunctionDefExpressionContext ctx) {
+        inFunctionDef = true;
+      }
+
+      @Override public void exitInternalFunctionDefExpression(
+              @NotNull DmlParser.InternalFunctionDefExpressionContext ctx) {
+        inFunctionDef = false;
+      }
+
+      @Override public void enterBuiltinFunctionExpression(
+              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+        inFunctionDef = true;
+      }
+
+      @Override public void exitBuiltinFunctionExpression(
+              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+        inFunctionDef = false;
+      }
+
       @Override public void exitFunctionCallAssignmentStatement(
               @NotNull DmlParser.FunctionCallAssignmentStatementContext ctx) {
-        addDIToVariableSet(ctx.targetList);
+        if (!inFunctionDef) {
+          addDIToVariableSet(ctx.targetList);
+        }
       }
 
       @Override public void exitFunctionCallMultiAssignmentStatement(
               @NotNull DmlParser.FunctionCallMultiAssignmentStatementContext ctx){
         for (DmlParser.DataIdentifierContext di : ctx.dataIdentifier()) {
-          addDIToVariableSet(di);
+          if (!inFunctionDef) {
+            addDIToVariableSet(di);
+          }
         }
       }
 
       @Override public void exitIfdefAssignmentStatement(
               @NotNull DmlParser.IfdefAssignmentStatementContext ctx){
-        addDIToVariableSet(ctx.targetList);
+        if (!inFunctionDef) {
+          addDIToVariableSet(ctx.targetList);
+        }
       }
 
       @Override public void exitAssignmentStatement(
               @NotNull DmlParser.AssignmentStatementContext ctx){
-        addDIToVariableSet(ctx.targetList);
-
+        if (!inFunctionDef) {
+          addDIToVariableSet(ctx.targetList);
+        }
       }
+
       private void addDIToVariableSet(DmlParser.DataIdentifierContext di) {
         if (di instanceof DmlParser.IndexedExpressionContext){
           lhsVariableSet.add(((DmlParser.IndexedExpressionContext) di).name.getText());
