@@ -43,12 +43,12 @@ public class SparkDMLInterpreter extends Interpreter {
   /**
    * Maintains values of all variables between DML cells
    */
-  public static LocalVariableMap localVariableMap = new LocalVariableMap();
+  public LocalVariableMap localVariableMap = new LocalVariableMap();
 
   /**
    * Maintains all the functions defined in the notebook
    */
-  public static Map<String, String> functionDefinitionMap = new HashMap<String, String>();
+  public Map<String, String> functionDefinitionMap = new HashMap<String, String>();
 
   static {
     Interpreter.register("dml", "spark", SparkDMLInterpreter.class.getName());
@@ -151,7 +151,7 @@ public class SparkDMLInterpreter extends Interpreter {
 
       writeVariables = lhsVariables;
       readVariables.addAll(rwVariables);
-      readVariables.removeAll(writeVariables);  // rwVariables - writeVariables = lhsVariables
+      //readVariables.removeAll(writeVariables);  // rwVariables - writeVariables = lhsVariables
 
       // Create list of functions to prepend and map of function -> function_body
       Set<String> functionsToAppend = new HashSet<String>(functionCalls);
@@ -258,8 +258,8 @@ public class SparkDMLInterpreter extends Interpreter {
     for (String v : readVariables){
       Data d = localVariableMap.get(v);
       if (d == null){
-        throw new DMLRuntimeException(
-                "Could not find value for " + v + " in variables map from previous cell");
+        logger.warn("Could not find value for " + v + " in variables map from previous cell");
+        continue;
       }
 
       prepend.append(v + " <- ");
@@ -323,13 +323,13 @@ public class SparkDMLInterpreter extends Interpreter {
         inFunctionDef = false;
       }
 
-      @Override public void enterBuiltinFunctionExpression(
-              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+      @Override public void enterExternalFunctionDefExpression(
+              @NotNull DmlParser.ExternalFunctionDefExpressionContext ctx)  {
         inFunctionDef = true;
       }
 
-      @Override public void exitBuiltinFunctionExpression(
-              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+      @Override public void exitExternalFunctionDefExpression(
+              @NotNull DmlParser.ExternalFunctionDefExpressionContext ctx) {
         inFunctionDef = false;
       }
 
@@ -373,8 +373,8 @@ public class SparkDMLInterpreter extends Interpreter {
         functionDefinitions.put(name, body);
       }
 
-      @Override public void exitBuiltinFunctionExpression(
-              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
+      @Override public void enterExternalFunctionDefExpression(
+              @NotNull DmlParser.ExternalFunctionDefExpressionContext ctx) {
         String name = ctx.name.getText();
         int startIndex = ctx.getStart().getStartIndex();
         int stopIndex = ctx.getStop().getStopIndex();

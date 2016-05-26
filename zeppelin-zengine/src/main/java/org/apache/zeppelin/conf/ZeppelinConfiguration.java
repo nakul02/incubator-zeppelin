@@ -545,7 +545,7 @@ public class ZeppelinConfiguration extends XMLConfiguration {
         + "org.apache.zeppelin.hbase.HbaseInterpreter,"
         + "org.apache.zeppelin.bigquery.BigQueryInterpreter,"
         + "org.apache.zeppelin.beam.BeamInterpreter,"
-        + "org.apache.zeppelin.systemml.DMLInterpreter"),
+        + "org.apache.zeppelin.systemml.DMLInterpreter,"
         + "org.apache.zeppelin.spark.SparkDMLInterpreter"),
     ZEPPELIN_INTERPRETER_JSON("zeppelin.interpreter.setting", "interpreter-setting.json"),
     ZEPPELIN_INTERPRETER_DIR("zeppelin.interpreter.dir", "interpreter"),
