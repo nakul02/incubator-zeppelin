@@ -38,7 +38,7 @@
     <mockito.version>1.10.19</mockito.version>
     <powermock.version>1.6.4</powermock.version>
     <spark.version>2.0.1</spark.version>
-    <systemml.version>0.10.0-incubating</systemml.version>
+    <systemml.version>0.11.0-incubating-SNAPSHOT</systemml.version>
   </properties>
 
   <dependencies>
