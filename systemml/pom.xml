@@ -36,7 +36,7 @@
 
 
     <properties>
-        <systemml.version>0.11.0-incubating-SNAPSHOT</systemml.version>
+        <systemml.version>0.11-incubating-SNAPSHOT</systemml.version>
     </properties>
 
     <dependencies>
