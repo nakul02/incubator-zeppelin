@@ -431,16 +431,6 @@ public class SparkDMLInterpreter extends Interpreter {
         inFunctionDef = false;
       }
 
-      @Override public void enterBuiltinFunctionExpression(
-              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
-        inFunctionDef = true;
-      }
-
-      @Override public void exitBuiltinFunctionExpression(
-              @NotNull DmlParser.BuiltinFunctionExpressionContext ctx) {
-        inFunctionDef = false;
-      }
-
       @Override public void exitFunctionCallAssignmentStatement(
               @NotNull DmlParser.FunctionCallAssignmentStatementContext ctx) {
         if (!inFunctionDef) {
