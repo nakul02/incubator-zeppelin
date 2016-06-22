@@ -15,11 +15,11 @@ RUN git clone -b zeppelin https://github.com/nakul02/incubator-systemml   &&\
     git clone -b spark_dml https://github.com/nakul02/incubator-zeppelin  &&\
     cd incubator-zeppelin                                                 &&\
     mvn clean package -Pbuild-distr -DskipTests                           &&\
-    mv zeppelin-distribution/target/zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz / &&\
+    mv zeppelin-distribution/target/zeppelin-0.6.0-SNAPSHOT.tar.gz / &&\
     cd /                                                                  &&\
     rm -rf incubator-systemml incubator-zeppelin                          &&\
-    tar xvf zeppelin-0.6.0-incubating-SNAPSHOT.tar.gz
+    tar xvf zeppelin-0.6.0-SNAPSHOT.tar.gz
 
 ADD http://snap.stanford.edu/data/amazon0601.txt.gz /
-CMD ["/zeppelin-0.6.0-incubating-SNAPSHOT/bin/zeppelin.sh"]
+CMD ["/zeppelin-0.6.0-SNAPSHOT/bin/zeppelin.sh"]
 EXPOSE 8080 8081
