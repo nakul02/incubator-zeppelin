@@ -157,7 +157,7 @@ public class SparkDMLInterpreter extends Interpreter {
       Set<String> functionsToAppend = new HashSet<String>(functionCalls);
       // Intersection of functions called and functions defined
       functionsToAppend.retainAll(functionDefinitionMap.keySet());
-      functionsToAppend.removeAll(localFunctionDefinitions.keySet()); // Remove functions defined 
+      functionsToAppend.removeAll(localFunctionDefinitions.keySet()); // Remove functions defined
       Map<String, String> functionsToAppendMap = new HashMap<String, String>();
       for (String f : functionsToAppend){
         functionsToAppendMap.put(f, functionDefinitionMap.get(f));
@@ -663,11 +663,6 @@ public class SparkDMLInterpreter extends Interpreter {
   public Scheduler getScheduler() {
     return SchedulerFactory.singleton().createOrGetFIFOScheduler(
             SparkDMLInterpreter.class.getName() + this.hashCode());
-  }
-
-  @Override
-  public List<String> completion(String buf, int cursor) {
-    return null;
   }
 
 }

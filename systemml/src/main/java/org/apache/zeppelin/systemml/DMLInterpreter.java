@@ -124,9 +124,4 @@ public class DMLInterpreter extends Interpreter {
             DMLInterpreter.class.getName() + this.hashCode());
   }
 
-  @Override
-  public List<String> completion(String buf, int cursor) {
-    return null;
-  }
-
 }
