@@ -134,5 +134,12 @@
       "language": "python",
       "editOnDblClick": false
     }
+  },
+  {
+    "group": "spark",
+    "name": "dml",
+    "className": "org.apache.zeppelin.spark.SparkDMLInterpreter",
+    "properties": {
+    }
   }
 ]

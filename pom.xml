@@ -66,7 +66,6 @@
     <module>postgresql</module>
     <module>jdbc</module>
     <module>file</module>
-    <module>systemml</module>
     <module>flink</module>
     <module>ignite</module>
     <module>kylin</module>
@@ -83,7 +82,7 @@
 
   <properties>
     <scala.version>2.10.5</scala.version>
-    <scala.binary.version>2.10</scala.binary.version>
+    <scala.binary.version>2.11</scala.binary.version>
     <scalatest.version>2.2.4</scalatest.version>
     <scalacheck.version>1.12.5</scalacheck.version>
 

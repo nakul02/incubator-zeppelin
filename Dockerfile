@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y git curl wget unzip bzip2
 #    cd .. && git clone -b spark_dml https://github.com/nakul02/incubator-zeppelin.git &&\
 #    cd incubator-zeppelin && mvn package -DskipTests
 
-RUN git clone -b zeppelin https://github.com/nakul02/incubator-systemml   &&\
+RUN git clone https://github.com/nakul02/incubator-systemml               &&\
     cd incubator-systemml                                                 &&\
     mvn package -P distribution -DskipTests                               &&\
     mvn install -DskipTests                                               &&\
